@@ -1,0 +1,234 @@
+Alright—here’s a complete, copy-paste ready Node.js project for your WhatsApp appointment chatbot using the WhatsApp Business Platform from Meta Platforms.
+
+This is a working MVP:
+
+Handles incoming messages
+Books appointments
+Stores data in MongoDB
+Sends replies on WhatsApp
+📁 1. Project Structure
+whatsapp-bot/
+│── server.js
+│── package.json
+│── .env
+│── db.js
+│── models/
+│     └── Appointment.js
+│── routes/
+│     └── webhook.js
+│── utils/
+│     └── sendMessage.js
+📦 2. Install Dependencies
+npm init -y
+npm install express axios dotenv mongoose body-parser
+🔐 3. .env File
+PORT=3000
+VERIFY_TOKEN=mytoken
+WHATSAPP_TOKEN=YOUR_ACCESS_TOKEN
+PHONE_NUMBER_ID=YOUR_PHONE_NUMBER_ID
+MONGO_URI=mongodb://127.0.0.1:27017/hospital_bot
+🗄️ 4. Database Connection (db.js)
+const mongoose = require("mongoose");
+
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("MongoDB Connected");
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
+};
+
+module.exports = connectDB;
+📄 5. Appointment Model
+const mongoose = require("mongoose");
+
+const AppointmentSchema = new mongoose.Schema({
+  phone: String,
+  name: String,
+  doctor: String,
+  date: String,
+  time: String,
+});
+
+module.exports = mongoose.model("Appointment", AppointmentSchema);
+📤 6. Send WhatsApp Message (utils/sendMessage.js)
+const axios = require("axios");
+
+const sendMessage = async (to, message) => {
+  try {
+    await axios.post(
+      `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+      {
+        messaging_product: "whatsapp",
+        to: to,
+        text: { body: message },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  } catch (error) {
+    console.error("Error sending message:", error.response?.data || error.message);
+  }
+};
+
+module.exports = sendMessage;
+🔗 7. Webhook Logic (routes/webhook.js)
+const express = require("express");
+const router = express.Router();
+const sendMessage = require("../utils/sendMessage");
+const Appointment = require("../models/Appointment");
+
+// Temporary in-memory user state
+let userState = {};
+
+router.get("/", (req, res) => {
+  const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token === VERIFY_TOKEN) {
+    return res.status(200).send(challenge);
+  }
+  res.sendStatus(403);
+});
+
+router.post("/", async (req, res) => {
+  try {
+    const body = req.body;
+
+    const msg = body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+    if (!msg) return res.sendStatus(200);
+
+    const from = msg.from;
+    const text = msg.text?.body?.toLowerCase();
+
+    if (!userState[from]) userState[from] = { step: 0 };
+
+    const state = userState[from];
+
+    // FLOW START
+    if (text === "hi" || text === "menu") {
+      state.step = 1;
+      return sendMessage(from, "Welcome to Hospital 👋\n1. Book Appointment");
+    }
+
+    if (state.step === 1 && text === "1") {
+      state.step = 2;
+      return sendMessage(from, "Enter your name:");
+    }
+
+    if (state.step === 2) {
+      state.name = text;
+      state.step = 3;
+      return sendMessage(from, "Select Doctor:\n1. Dr Sharma\n2. Dr Mehta");
+    }
+
+    if (state.step === 3) {
+      state.doctor = text === "1" ? "Dr Sharma" : "Dr Mehta";
+      state.step = 4;
+      return sendMessage(from, "Enter date (YYYY-MM-DD):");
+    }
+
+    if (state.step === 4) {
+      state.date = text;
+      state.step = 5;
+      return sendMessage(from, "Enter time (HH:MM):");
+    }
+
+    if (state.step === 5) {
+      state.time = text;
+
+      await Appointment.create({
+        phone: from,
+        name: state.name,
+        doctor: state.doctor,
+        date: state.date,
+        time: state.time,
+      });
+
+      state.step = 0;
+
+      return sendMessage(
+        from,
+        `✅ Appointment Confirmed\nName: ${state.name}\nDoctor: ${state.doctor}\nDate: ${state.date}\nTime: ${state.time}`
+      );
+    }
+
+    return sendMessage(from, "Type 'menu' to start");
+  } catch (err) {
+    console.error(err);
+    res.sendStatus(500);
+  }
+});
+
+module.exports = router;
+🚀 8. Main Server (server.js)
+require("dotenv").config();
+const express = require("express");
+const bodyParser = require("body-parser");
+const connectDB = require("./db");
+
+const app = express();
+connectDB();
+
+app.use(bodyParser.json());
+
+app.use("/webhook", require("./routes/webhook"));
+
+app.get("/", (req, res) => res.send("Bot Running"));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+▶️ 9. Run Your Project
+node server.js
+🌍 10. Expose to Internet (for webhook)
+
+Use ngrok:
+
+npx ngrok http 3000
+
+Copy URL → set in Meta webhook
+
+🧪 11. Test Flow
+
+Send message on WhatsApp:
+
+hi
+→ 1
+→ your name
+→ 1
+→ 2026-04-10
+→ 11:00
+✅ What You Just Built
+WhatsApp chatbot
+Appointment booking system
+MongoDB storage
+Multi-step conversation flow
+⚠️ Limitations (Next upgrades)
+❌ No real-time slot checking
+❌ No AI understanding
+❌ No admin panel
+🚀 Want Next Level?
+
+I can help you add:
+
+✅ Doctor availability system
+✅ Admin dashboard
+✅ AI chatbot (natural language)
+✅ Payment integration
+✅ Deployment on AWS
+
+Just tell me:
+👉 “Upgrade this project”
+or
+👉 “Add AI + real doctor slots”
+
+and we’ll level it up 🔥
